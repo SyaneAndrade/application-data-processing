@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:13
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: root
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+      # copy the sql script to create tables
+      - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
+      - ./sql/fill_tables.sql:/docker-entrypoint-initdb.d/fill_tables.sql
+      - ./sql/create_conversations_create.sql:/docker-entrypoint-initdb.d/create_conversations_create.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root"]
+      interval: 5s
+      retries: 5
+    restart: always
+  
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: always
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: root@root.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+      - ./pgadmin-data:/var/lib/pgadmin
+  
+  spark:
+        image: bitnami/spark
+        user: root # Run container as root container: https://docs.bitnami.com/tutorials/work-with-non-root-containers/
+        hostname: spark
+        environment:
+            - SPARK_MODE=master
+            - SPARK_RPC_AUTHENTICATION_ENABLED=no
+            - SPARK_RPC_ENCRYPTION_ENABLED=no
+            - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+            - SPARK_SSL_ENABLED=no
+        volumes:
+            - ./spark/app:/usr/local/spark/app
+            - ./spark/resources:/usr/local/spark/resources 
+        ports:
+            - "8181:8080"
+            - "7077:7077"
+        volumes: 
+          - ./postgres-data:/var/lib/postgresql/data
+          # copy the sql script to create tables
+          - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
+
+  spark-worker-1:
+      image: bitnami/spark
+      user: root
+      environment:
+          - SPARK_MODE=worker
+          - SPARK_MASTER_URL=spark://spark:7077
+          - SPARK_WORKER_MEMORY=1G
+          - SPARK_WORKER_CORES=1
+          - SPARK_RPC_AUTHENTICATION_ENABLED=no
+          - SPARK_RPC_ENCRYPTION_ENABLED=no
+          - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+          - SPARK_SSL_ENABLED=no
+      volumes:
+          - ./spark/app:/usr/local/spark/app
+          - ./spark/resources:/usr/local/spark/resources 
+
+  spark-worker-2:
+      image: bitnami/spark
+      user: root
+      environment:
+          - SPARK_MODE=worker
+          - SPARK_MASTER_URL=spark://spark:7077
+          - SPARK_WORKER_MEMORY=1G
+          - SPARK_WORKER_CORES=1
+          - SPARK_RPC_AUTHENTICATION_ENABLED=no
+          - SPARK_RPC_ENCRYPTION_ENABLED=no
+          - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+          - SPARK_SSL_ENABLED=no
+      volumes:
+          - ./spark/app:/usr/local/spark/app
+          - ./spark/resources:/usr/local/spark/resources 
+
+  spark-worker-3:
+      image: bitnami/spark
+      user: root
+      environment:
+          - SPARK_MODE=worker
+          - SPARK_MASTER_URL=spark://spark:7077
+          - SPARK_WORKER_MEMORY=1G
+          - SPARK_WORKER_CORES=1
+          - SPARK_RPC_AUTHENTICATION_ENABLED=no
+          - SPARK_RPC_ENCRYPTION_ENABLED=no
+          - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+          - SPARK_SSL_ENABLED=no
+      volumes:
+          - ./spark/app:/usr/local/spark/app
+          - ./spark/resources:/usr/local/spark/resources 
+    
+  jupyter:
+    image: jupyter/pyspark-notebook
+    environment:
+      JUPYTER_TOKEN: airflow
+    ports:
+      - 8888:8888
+      - 4040:4040
+      - 4041:4041
+    volumes:
+      - ./notebooks:/home/notebooks
+      - ./spark/resources/data:/home/work/data/
+      - ./spark/resources:/usr/local/spark/resources
+    restart: always
