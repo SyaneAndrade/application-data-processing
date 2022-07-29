@@ -1,4 +1,10 @@
+# documents
 /appEventProcessingDataset
 *.pdf
 *.csv
 *tar.gz
+# docker folders
+/notebooks
+/pgadmin-data
+/postgres-data
+/spark
