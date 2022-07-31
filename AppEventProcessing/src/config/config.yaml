@@ -1,0 +1,9 @@
+path_source:
+  folder: dataset
+  connectivity_status: connectivity_status.csv
+  customer_courier_chat_messages: customer_courier_chat_messages.csv
+  orders: orders.csv
+  polling: polling.csv
+path_to_save:
+  folder: [dataset, result]
+  save_file : connectivity_environment_device.csv
