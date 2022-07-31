@@ -2,7 +2,7 @@ from dao.data_acess_object import DataAcessObject
 from config.config import Config
 from dependencies.spark_builder import SparkBuilder
 from pyspark.sql import DataFrame
-from controller.processing.polling_orders_processor import PollingOrdersProcessor
+from controller.data_processor.polling_orders_processor import PollingOrdersProcessor
 
 
 class MainController(object):
@@ -43,10 +43,7 @@ class MainController(object):
         self.polling_order_processor.set_df_polling(self.read_polling())
 
     def processing_polling_orders(self):
-        df_join_polling_orders = self.polling_order_processor.join_polling_orders()
-        df_polling_orders = self.polling_order_processor.df_polling_orders_select(
-            df_join_polling_orders
-        )
+        df_polling_orders = self.polling_order_processor.join_polling_orders()
         df_diff_date_creation_polling_orders = (
             self.polling_order_processor.diff_date_creation_polling_orders(
                 df_polling_orders=df_polling_orders
@@ -77,5 +74,25 @@ class MainController(object):
                 name_column="three_minutes_before_order",
             )
         )
-        df_count_three_minutes_before_order.show(truncate=False)
+        df_count_sixty_minutes_before_order = (
+            self.polling_order_processor.df_count_all_events_polling_period(
+                df=df_sixty_minutes_before_order,
+                name_column="sixty_minutes_before_order",
+            )
+        )
+        df_count_three_minutes_after_order = (
+            self.polling_order_processor.df_count_all_events_polling_period(
+                df=df_three_minutes_after_order,
+                name_column="three_minutes_after_order",
+            )
+        )
+        df_join_three_sity_minutes_before_after = (
+            self.polling_order_processor.join_all_counts_periods(
+                df_count_three_minutes_before_order=df_count_three_minutes_before_order,
+                df_count_three_minutes_after_order=df_count_three_minutes_after_order,
+                df_count_sixty_minutes_before_order=df_count_sixty_minutes_before_order,
+            )
+        )
+
+        df_join_three_sity_minutes_before_after.show(truncate=False)
         df_diff_date_creation_polling_orders.unpersist()

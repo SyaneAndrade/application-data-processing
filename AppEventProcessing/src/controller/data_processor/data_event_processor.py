@@ -1,7 +1,6 @@
 from select import select
-from pyspark.sql import DataFrame, GroupedData
+from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count
-from pyspark.sql.types import *
 
 
 class DataEventProcessor(object):
