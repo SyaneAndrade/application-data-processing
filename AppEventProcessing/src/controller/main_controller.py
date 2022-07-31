@@ -9,10 +9,11 @@ class MainController(object):
     """The class that controllers the entire project"""
 
     def __init__(self) -> None:
-        self.spark = SparkBuilder().get_spark()
-        self.dao = DataAcessObject(self.spark)
-        self.conf = Config().get_config()
-        self.polling_order_processor = PollingOrdersProcessor()
+        self.spark: SparkBuilder = SparkBuilder().get_spark()
+        self.dao: DataAcessObject = DataAcessObject(self.spark)
+        self.conf: Config = Config().get_config()
+        self.polling_order_processor: PollingOrdersProcessor = PollingOrdersProcessor()
+        self.df_processed_polling_orders: DataFrame = None
 
     def read_source_connectivity_status(self) -> DataFrame:
         """The method that read the source connectivity_status.
@@ -39,10 +40,21 @@ class MainController(object):
         return self.dao.read_csv(self.conf["path_polling"], "true")
 
     def set_polling_orders_processor(self) -> None:
-        self.polling_order_processor.set_df_orders(self.read_orders())
-        self.polling_order_processor.set_df_polling(self.read_polling())
+        """Setting the data frames for an object of processing pollings and orders."""
+        self.polling_order_processor.set_df_orders(df_orders=self.read_orders())
+        self.polling_order_processor.set_df_polling(df_polling=self.read_polling())
 
     def processing_polling_orders(self):
+        """Controlling the main logic to obtain:
+          ● The total count of all polling events;
+          ● The count of each type of polling status_code;
+          ● The count of each type of polling error_code and the count of responses without error.
+          codes.
+        Per period:
+          ● Three minutes before the order creation time;
+          ● Three minutes after the order creation time;
+          ● One hour before the order creation time.
+        """
         df_polling_orders = self.polling_order_processor.join_polling_orders()
         df_diff_date_creation_polling_orders = (
             self.polling_order_processor.diff_date_creation_polling_orders(
@@ -94,5 +106,9 @@ class MainController(object):
             )
         )
 
-        df_join_three_sity_minutes_before_after.show(truncate=False)
+        self.df_processed_polling_orders = (
+            df_join_three_sity_minutes_before_after.persist()
+        )
+        self.df_processed_polling_orders.count()
+        self.df_processed_polling_orders.show(truncate=False)
         df_diff_date_creation_polling_orders.unpersist()
