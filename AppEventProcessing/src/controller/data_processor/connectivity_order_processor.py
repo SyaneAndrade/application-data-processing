@@ -10,12 +10,30 @@ class ConnectivityOrderProcessor(DataEventProcessor):
     df_connectivity_orders: DataFrame = None
 
     def set_orders(self, df_orders: DataFrame) -> None:
+        """Setting the value for dataframe orders.
+
+        Args:
+            df_orders (DataFrame): Data frame from orders.
+        """
         self.df_oders = df_orders
 
     def set_connectivity_status(self, df_connectivity_status: DataFrame) -> None:
+        """Setting the value for dataframe connectivity status.
+
+        Args:
+            df_connectivity_status (DataFrame): Data frame from connectivity status.
+        """
         self.df_connectivity_status = df_connectivity_status
 
     def select_connectivity_order(self, df: DataFrame) -> DataFrame:
+        """Selecting columns in data frame object from connectivity status and orders.
+
+        Args:
+            df_polling_orders (DataFrame): Data frame object from connectivity status and orders.
+
+        Returns:
+            DataFrame: Data frame with select columns.
+        """
         column_names = [
             "connectivity_status.creation_time",
             "connectivity_status.status",
@@ -33,6 +51,11 @@ class ConnectivityOrderProcessor(DataEventProcessor):
         return self.select_list(df=df, cols_names=column_names, alias_list=alias_list)
 
     def set_connectivity_orders(self) -> None:
+        """Joining the data frame connectivity status with orders.
+
+        Returns:
+            DataFrame: Dataframe from join between connectivity status and orders.
+        """
         on_join = self.df_connectivity_status.device_id == self.df_oders.device_id
         df_join_connectivity_orders = self.df_join(
             first_df=self.df_connectivity_status,
@@ -48,6 +71,7 @@ class ConnectivityOrderProcessor(DataEventProcessor):
         self.rank_status_connectivity_orders()
 
     def fill_status_connectivity_orders(self) -> None:
+        """Fill the information in the column status where status is None."""
         self.df_connectivity_orders = self.df_connectivity_orders.withColumn(
             "status", coalesce(col("status"), lit("NO_CONNECTIVITY"))
         )
@@ -62,17 +86,29 @@ class ConnectivityOrderProcessor(DataEventProcessor):
         )
         self.df_connectivity_orders
 
-    def select_rank_order_desc(self, df: DataFrame) -> DataFrame:
-        columns_name = ["order_id", "status", "creation_time", "device_id"]
+    def select_status_before_order(self, df: DataFrame) -> DataFrame:
+        """Select columns in the data frame object from connectivity status and orders with status before an order.
+
+        Args:
+            df (DataFrame): Data frame object from with status before order.
+
+        Returns:
+            DataFrame: Data frame with select columns.
+        """
+        columns_name = ["order_id", "status", "creation_time"]
         alias_list = [
             "order_id",
             "status_before_order",
             "creation_time_status_before_order",
-            "device_id",
         ]
         return self.select_list(df=df, cols_names=columns_name, alias_list=alias_list)
 
     def filter_status_before_order(self) -> DataFrame:
+        """Filter the status and the creation_time before a order.
+
+        Returns:
+            DataFrame: Data frame with the results.
+        """
         df_rank_order = self.df_connectivity_orders.where(
             date_format(col("creation_time"), "yyyy-MM-dd HH:MM:SS")
             < col("order_creation_time")
@@ -85,58 +121,5 @@ class ConnectivityOrderProcessor(DataEventProcessor):
             name_column="rank_desc",
         )
         df_filter_rank = df_rank_order_desc.where(col("rank_desc") == 1)
-        df_select_desc_rank = self.select_rank_order_desc(df_filter_rank)
-        return df_select_desc_rank
-
-    def select_status_before_order(self, df: DataFrame) -> DataFrame:
-        columns_name = [
-            "connectivity_orders.creation_time",
-            "connectivity_orders.status",
-            "connectivity_orders.device_id",
-            "connectivity_orders.order_creation_time",
-            "connectivity_orders.order_id",
-            "status_before_order.status_before_order",
-            "status_before_order.creation_time_status_before_order",
-        ]
-        alias_list = [
-            "creation_time",
-            "status",
-            "device_id",
-            "order_creation_time",
-            "order_id",
-            "status_before_order",
-            "creation_time_status_before_order",
-        ]
-        return self.select_list(df=df, cols_names=columns_name, alias_list=alias_list)
-
-    def filter_change_status_before_order(
-        self, df_select_desc_rank: DataFrame
-    ) -> DataFrame:
-        on_join = (
-            self.df_connectivity_orders.order_id == df_select_desc_rank.order_id
-        ) & (self.df_connectivity_orders.device_id == df_select_desc_rank.device_id)
-        df_join_status_before_order = self.df_join(
-            first_df=self.df_connectivity_orders,
-            second_df=df_select_desc_rank,
-            first_alias="connectivity_orders",
-            second_alias="status_before_order",
-            join_on=on_join,
-        )
-        df_select_status_before_order = self.select_status_before_order(
-            df=df_join_status_before_order
-        )
-        df_other_status = df_select_status_before_order.filter(
-            (col("status_before_order") != col("status"))
-            & (col("creation_time") < col("creation_time_status_before_order"))
-        )
-        df_other_status_rank_desc = self.rank_number(
-            df=df_other_status,
-            partition_columns=["order_id"],
-            order_columns=["creation_time"],
-            order="desc",
-            name_column="rank_desc",
-        )
-        df_last_time_other_status = df_other_status_rank_desc.where(
-            col("rank_desc") == 1
-        )
-        df_last_time_other_status.show(truncate=False)
+        df_status_before_order = self.select_status_before_order(df_filter_rank)
+        return df_status_before_order

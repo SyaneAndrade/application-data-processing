@@ -104,6 +104,18 @@ class DataEventProcessor(object):
         order: str = "asc",
         name_column: str = "rank",
     ) -> DataFrame:
+        """Create a rank number using a window.
+
+        Args:
+            df (DataFrame): Data frame for the creation of the row number.
+            partition_columns (list): List of columns for window partition.
+            order_columns (list): List of columns to order.
+            order (str, optional): Type of ordination ("desc" or "asc"). Defaults to "asc".
+            name_column (str, optional): The name of the column with the row number. Defaults to "rank".
+
+        Returns:
+            DataFrame: The Data frame with the rank number column.
+        """
         partition_columns = [col(name) for name in partition_columns]
         if order == "desc":
             order_columns = [col(name).desc() for name in order_columns]

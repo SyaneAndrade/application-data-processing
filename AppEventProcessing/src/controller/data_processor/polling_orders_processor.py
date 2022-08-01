@@ -34,7 +34,12 @@ class PollingOrdersProcessor(DataEventProcessor):
         """
         join_on = self.df_polling.device_id == self.df_oders.device_id
         df_join_polling_orders = self.df_join(
-            self.df_polling, self.df_oders, "polling", "orders", join_on
+            first_df=self.df_polling,
+            second_df=self.df_oders,
+            first_alias="polling",
+            second_alias="orders",
+            join_on=join_on,
+            type_join="inner",
         )
 
         self.df_polling_orders = self.df_polling_orders_select(
@@ -58,48 +63,57 @@ class PollingOrdersProcessor(DataEventProcessor):
             order_columns=list_order_by,
         )
 
-    def filter_time_before_after_order_creation(
-        self, df_rank_polling_order: DataFrame
-    ) -> DataFrame:
+    def filter_time_before_after_order_creation(self) -> DataFrame:
         """Filtering by rank the  time of the polling event immediately preceding,
         and immediately following the order creation time.
-
-        Args:
-            df_rank_polling_order (DataFrame): Data frame with a rank column
 
         Returns:
             DataFrame: The filtered data frame results.
         """
-        select_rank = df_rank_polling_order.select(col("order_id"), col("rank")).where(
+        select_before_order = self.df_polling_orders.where(
             (
-                col("order_creation_time")
-                == date_format(col("creation_time"), "yyyy-MM-dd HH:MM:SS")
+                to_timestamp(col("order_creation_time"))
+                < to_timestamp(col("creation_time"))
             )
         )
-        on_join = "order_id"
-        df_join_rank_order_polling = self.df_join(
-            first_df=df_rank_polling_order,
-            second_df=select_rank,
-            first_alias="rank_poling_order",
-            second_alias="rank_order",
-            join_on=on_join,
+        rank_before_order = self.rank_number(
+            df=select_before_order,
+            partition_columns=["order_id"],
+            order_columns=["creation_time"],
+            order="desc",
+            name_column="rank_desc",
         )
-
-        df_before_order_creation_time = df_join_rank_order_polling.select(
+        df_before_order = rank_before_order.select(
             col("order_id"),
             col("creation_time").alias("immediately_time_before_order_creation"),
-        ).where(col("rank_poling_order.rank") == (col("rank_order.rank") - 1))
-        df_after_order_creation_time = df_join_rank_order_polling.select(
+        ).where(col("rank_desc") == 1)
+        selec_after_order = self.df_polling_orders.where(
+            (
+                to_timestamp(col("order_creation_time"))
+                > to_timestamp(col("creation_time"))
+            )
+        )
+        rank_after_order = self.rank_number(
+            df=selec_after_order,
+            partition_columns=["order_id"],
+            order_columns=["creation_time"],
+        )
+        df_after_order = rank_after_order.select(
             col("order_id"),
             col("creation_time").alias("immediately_time_after_order_creation"),
-        ).where(col("rank_poling_order.rank") == (col("rank_order.rank") + 1))
-        return self.df_join(
-            first_df=df_before_order_creation_time,
-            second_df=df_after_order_creation_time,
-            first_alias="before",
-            second_alias="after",
+        ).where(col("rank") == 1)
+
+        on_join = "order_id"
+        df_join_rank_order_polling = self.df_join(
+            first_df=df_before_order,
+            second_df=df_after_order,
+            first_alias="rank_before_order",
+            second_alias="rank_after_order",
             join_on=on_join,
+            type_join="full",
         )
+        df_join_rank_order_polling = df_join_rank_order_polling.distinct()
+        return df_join_rank_order_polling
 
     def df_polling_orders_select(self, df_polling_orders: DataFrame) -> DataFrame:
         """Selecting columns in data frame object from polling and orders.
@@ -290,11 +304,13 @@ class PollingOrdersProcessor(DataEventProcessor):
         Returns:
             DataFrame: Data frame with all counts for the period given.
         """
+        # Count the pollings by rule
         df_count_all_polling_events = self.count_all_polings_events(
             df=df, name_column=name_column
         )
         df_status_code = self.count_status_code(df=df, name_column=name_column)
         df_error_code = self.count_error_code(df=df, name_column=name_column)
+        # Join all the results
         join_on_all_events_status_code = (
             df_count_all_polling_events.order_id == df_status_code.order_id
         )
@@ -304,6 +320,7 @@ class PollingOrdersProcessor(DataEventProcessor):
             first_alias="all_events",
             second_alias="all_status_code",
             join_on=join_on_all_events_status_code,
+            type_join="full",
         )
         df_all_events_status_code = self.select_join_all_events_status_code(
             df=df_join_all_events_status_code, name_column=name_column
@@ -317,6 +334,7 @@ class PollingOrdersProcessor(DataEventProcessor):
             first_alias="all_events_status_code",
             second_alias="error_code",
             join_on=join_on_all_events_error_code,
+            type_join="full",
         )
         return self.select_join_all_events_status_error_code(
             df=df_join_all_events_error_code, name_column=name_column
@@ -430,6 +448,7 @@ class PollingOrdersProcessor(DataEventProcessor):
             first_alias="three_minutes_before",
             second_alias="three_minutes_after",
             join_on=join_on,
+            type_join="full",
         )
         df_select_three_minutes_before_after = (
             self.select_join_three_minutes_before_after(
@@ -456,10 +475,26 @@ class PollingOrdersProcessor(DataEventProcessor):
             first_alias="three_minutes_before_after",
             second_alias="sixty_minutes_before_order",
             join_on=join_on_sixty,
+            type_join="full",
         )
+        """ 
+        Join the count with all orders with device id in the search, 
+        maybe some orders don't have information in the given period.
+        """
+        df_select_orders = self.df_polling_orders.select(
+            "order_id", "order_creation_time"
+        ).distinct()
         df_select_three_sixty_minutes_before_after = (
             self.select_join_three_sixty_minutes_before_after(
                 df=df_join_three_sixty_minutes_before_after
             )
         )
-        return df_select_three_sixty_minutes_before_after
+        df_select_orders_counts = self.df_join(
+            first_df=df_select_orders,
+            second_df=df_select_three_sixty_minutes_before_after,
+            first_alias="orders",
+            second_alias="counts",
+            join_on="order_id",
+            type_join="left",
+        )
+        return df_select_orders_counts

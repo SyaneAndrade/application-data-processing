@@ -125,13 +125,8 @@ class MainController(object):
         """Controlling the main logic to obtain The time of the polling event immediately preceding,
         and immediately following the order creation time.
         """
-        df_ranked_polling_order = (
-            self.polling_order_processor.create_rank_polling_order()
-        )
         self.df_time_immediately_before_after_order = (
-            self.polling_order_processor.filter_time_before_after_order_creation(
-                df_rank_polling_order=df_ranked_polling_order
-            )
+            self.polling_order_processor.filter_time_before_after_order_creation()
         )
         self.df_time_immediately_before_after_order.persist()
         self.df_time_immediately_before_after_order.count()
@@ -144,6 +139,7 @@ class MainController(object):
         self.connectivity_order_processor.set_connectivity_orders()
 
     def processing_connectivity_order(self) -> None:
+        """Controlling the main logic to obtain most recent connectivity status."""
         self.connectivity_order_processor.rank_status_connectivity_orders()
         self.connectivity_order_processor.df_connectivity_orders.cache()
         self.connectivity_order_processor.df_connectivity_orders.count()
@@ -155,6 +151,7 @@ class MainController(object):
         self.connectivity_order_processor.df_connectivity_orders.unpersist()
 
     def join_all_df_processed(self) -> None:
+        """Create the final data frame with all information processed."""
         join_on = "order_id"
         df_final = self.polling_order_processor.df_join(
             first_df=self.df_processed_count_polling_orders,
@@ -162,6 +159,7 @@ class MainController(object):
             first_alias="counts",
             second_alias="time_before",
             join_on=join_on,
+            type_join="left",
         )
         self.df_to_save = self.polling_order_processor.df_join(
             first_df=df_final,
@@ -169,9 +167,11 @@ class MainController(object):
             first_alias="final",
             second_alias="status_before",
             join_on=join_on,
+            type_join="left",
         )
 
     def save(self) -> None:
+        """Save the data frame final."""
         self.dao.write_csv(
             dataframe=self.df_to_save, path=self.conf["save_file"], header="true"
         )
