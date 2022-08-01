@@ -1,6 +1,7 @@
 from select import select
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, count
+from pyspark.sql.functions import col, count, dense_rank
+from pyspark.sql.window import Window
 
 
 class DataEventProcessor(object):
@@ -94,3 +95,11 @@ class DataEventProcessor(object):
         else:
             select_column_names = [col(name) for name in cols_names]
         return df.select(*select_column_names)
+
+    def rank_number(
+        self, df: DataFrame, partition_columns: list, order_columns: list
+    ) -> DataFrame:
+        partition_columns = [col(name) for name in partition_columns]
+        order_columns = [col(name) for name in order_columns]
+        window = Window.partitionBy(*partition_columns).orderBy(*order_columns)
+        return df.withColumn("rank", dense_rank().over(window))

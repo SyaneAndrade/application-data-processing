@@ -13,7 +13,7 @@ class MainController(object):
         self.dao: DataAcessObject = DataAcessObject(self.spark)
         self.conf: Config = Config().get_config()
         self.polling_order_processor: PollingOrdersProcessor = PollingOrdersProcessor()
-        self.df_processed_polling_orders: DataFrame = None
+        self.df_processed_count_polling_orders: DataFrame = None
 
     def read_source_connectivity_status(self) -> DataFrame:
         """The method that read the source connectivity_status.
@@ -106,9 +106,29 @@ class MainController(object):
             )
         )
 
-        self.df_processed_polling_orders = (
+        self.df_processed_count_polling_orders = (
             df_join_three_sity_minutes_before_after.persist()
         )
-        self.df_processed_polling_orders.count()
-        self.df_processed_polling_orders.show(truncate=False)
+        self.df_processed_count_polling_orders.count()
         df_diff_date_creation_polling_orders.unpersist()
+
+    def time_immediately_before_after_order(self):
+        """Controlling the main logic to obtain The time of the polling event immediately preceding,
+        and immediately following the order creation time.
+        """
+        df_ranked_polling_order = (
+            self.polling_order_processor.create_rank_polling_order()
+        )
+        self.df_time_immediately_before_after_order = (
+            self.polling_order_processor.filter_time_before_after_order_creation(
+                df_rank_polling_order=df_ranked_polling_order
+            )
+        )
+        self.df_time_immediately_before_after_order.persist()
+        self.df_time_immediately_before_after_order.count()
+
+    def unpersist_data_frames(self) -> None:
+        """Unpersist the data frames in memory"""
+        self.df_time_immediately_before_after_order.unpersist()
+        self.df_processed_count_polling_orders.unpersist()
+        self.polling_order_processor.df_polling_orders.unpersist()

@@ -1,5 +1,5 @@
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, to_timestamp, coalesce, lit
+from pyspark.sql.functions import col, to_timestamp, coalesce, lit, date_format
 from controller.data_processor.data_event_processor import DataEventProcessor
 
 
@@ -8,6 +8,7 @@ class PollingOrdersProcessor(DataEventProcessor):
 
     df_oders: DataFrame = None
     df_polling: DataFrame = None
+    df_polling_orders: DataFrame = None
 
     def set_df_orders(self, df_orders: DataFrame) -> None:
         """Setting the value for dataframe orders.
@@ -36,7 +37,69 @@ class PollingOrdersProcessor(DataEventProcessor):
             self.df_polling, self.df_oders, "polling", "orders", join_on
         )
 
-        return self.df_polling_orders_select(df_polling_orders=df_join_polling_orders)
+        self.df_polling_orders = self.df_polling_orders_select(
+            df_polling_orders=df_join_polling_orders
+        )
+        self.df_polling_orders = self.df_polling_orders.persist()
+        self.df_polling_orders.count()
+        return self.df_polling_orders
+
+    def create_rank_polling_order(self) -> DataFrame:
+        """Creating a column rank for data frame polling order.
+
+        Returns:
+            DataFrame: A new data frame with the rank.
+        """
+        partiton_list = ["order_id"]
+        list_order_by = ["creation_time"]
+        return self.rank_number(
+            df=self.df_polling_orders,
+            partition_columns=partiton_list,
+            order_columns=list_order_by,
+        )
+
+    def filter_time_before_after_order_creation(
+        self, df_rank_polling_order: DataFrame
+    ) -> DataFrame:
+        """Filtering by rank the  time of the polling event immediately preceding,
+        and immediately following the order creation time.
+
+        Args:
+            df_rank_polling_order (DataFrame): Data frame with a rank column
+
+        Returns:
+            DataFrame: The filtered data frame results.
+        """
+        select_rank = df_rank_polling_order.select(col("order_id"), col("rank")).where(
+            (
+                col("order_creation_time")
+                == date_format(col("creation_time"), "yyyy-MM-dd HH:MM:SS")
+            )
+        )
+        on_join = "order_id"
+        df_join_rank_order_polling = self.df_join(
+            first_df=df_rank_polling_order,
+            second_df=select_rank,
+            first_alias="rank_poling_order",
+            second_alias="rank_order",
+            join_on=on_join,
+        )
+
+        df_before_order_creation_time = df_join_rank_order_polling.select(
+            col("order_id"),
+            col("creation_time").alias("immediately_time_before_order_creation"),
+        ).where(col("rank_poling_order.rank") == (col("rank_order.rank") - 1))
+        df_after_order_creation_time = df_join_rank_order_polling.select(
+            col("order_id"),
+            col("creation_time").alias("immediately_time_after_order_creation"),
+        ).where(col("rank_poling_order.rank") == (col("rank_order.rank") + 1))
+        return self.df_join(
+            first_df=df_before_order_creation_time,
+            second_df=df_after_order_creation_time,
+            first_alias="before",
+            second_alias="after",
+            join_on=on_join,
+        )
 
     def df_polling_orders_select(self, df_polling_orders: DataFrame) -> DataFrame:
         """Selecting columns in data frame object from polling and orders.
