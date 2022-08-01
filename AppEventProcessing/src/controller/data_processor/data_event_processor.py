@@ -97,9 +97,17 @@ class DataEventProcessor(object):
         return df.select(*select_column_names)
 
     def rank_number(
-        self, df: DataFrame, partition_columns: list, order_columns: list
+        self,
+        df: DataFrame,
+        partition_columns: list,
+        order_columns: list,
+        order: str = "asc",
+        name_column: str = "rank",
     ) -> DataFrame:
         partition_columns = [col(name) for name in partition_columns]
-        order_columns = [col(name) for name in order_columns]
+        if order == "desc":
+            order_columns = [col(name).desc() for name in order_columns]
+        else:
+            order_columns = [col(name) for name in order_columns]
         window = Window.partitionBy(*partition_columns).orderBy(*order_columns)
-        return df.withColumn("rank", dense_rank().over(window))
+        return df.withColumn(name_column, dense_rank().over(window))

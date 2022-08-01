@@ -42,7 +42,9 @@ class DataAcessObject(object):
             path (str): The path where the data frame has to be saved.
             header (str, optional): Set the header true if you want your document to have a header. Defaults to 'false'.
         """
-        dataframe.write.option("header", header).csv(path)
+        dataframe.repartition(1).write.option("header", header).mode("overwrite").csv(
+            path
+        )
 
     def write_parquet(self, dataframe: DataFrame, path: str) -> None:
         """This is a method to write data frame in Parquet format.

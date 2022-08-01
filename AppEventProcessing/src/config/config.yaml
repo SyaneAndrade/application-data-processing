@@ -6,4 +6,4 @@ path_source:
   polling: polling.csv
 path_to_save:
   folder: [dataset, result]
-  save_file : connectivity_environment_device.csv
+  save_file : ""

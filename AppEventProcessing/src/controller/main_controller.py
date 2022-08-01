@@ -3,6 +3,9 @@ from config.config import Config
 from dependencies.spark_builder import SparkBuilder
 from pyspark.sql import DataFrame
 from controller.data_processor.polling_orders_processor import PollingOrdersProcessor
+from controller.data_processor.connectivity_order_processor import (
+    ConnectivityOrderProcessor,
+)
 
 
 class MainController(object):
@@ -13,9 +16,15 @@ class MainController(object):
         self.dao: DataAcessObject = DataAcessObject(self.spark)
         self.conf: Config = Config().get_config()
         self.polling_order_processor: PollingOrdersProcessor = PollingOrdersProcessor()
+        self.connectivity_order_processor: ConnectivityOrderProcessor = (
+            ConnectivityOrderProcessor()
+        )
         self.df_processed_count_polling_orders: DataFrame = None
+        self.df_time_immediately_before_after_order: DataFrame = None
+        self.df_status_before_order: DataFrame = None
+        self.df_to_save: DataFrame = None
 
-    def read_source_connectivity_status(self) -> DataFrame:
+    def read_connectivity_status(self) -> DataFrame:
         """The method that read the source connectivity_status.
 
         Returns:
@@ -127,8 +136,49 @@ class MainController(object):
         self.df_time_immediately_before_after_order.persist()
         self.df_time_immediately_before_after_order.count()
 
+    def set_connectivity_order(self) -> None:
+        self.connectivity_order_processor.set_orders(df_orders=self.read_orders())
+        self.connectivity_order_processor.set_connectivity_status(
+            df_connectivity_status=self.read_connectivity_status()
+        )
+        self.connectivity_order_processor.set_connectivity_orders()
+
+    def processing_connectivity_order(self) -> None:
+        self.connectivity_order_processor.rank_status_connectivity_orders()
+        self.connectivity_order_processor.df_connectivity_orders.cache()
+        self.connectivity_order_processor.df_connectivity_orders.count()
+        self.df_status_before_order = (
+            self.connectivity_order_processor.filter_status_before_order()
+        )
+        self.df_status_before_order.persist()
+        self.df_status_before_order.count()
+        self.connectivity_order_processor.df_connectivity_orders.unpersist()
+
+    def join_all_df_processed(self) -> None:
+        join_on = "order_id"
+        df_final = self.polling_order_processor.df_join(
+            first_df=self.df_processed_count_polling_orders,
+            second_df=self.df_time_immediately_before_after_order,
+            first_alias="counts",
+            second_alias="time_before",
+            join_on=join_on,
+        )
+        self.df_to_save = self.polling_order_processor.df_join(
+            first_df=df_final,
+            second_df=self.df_status_before_order,
+            first_alias="final",
+            second_alias="status_before",
+            join_on=join_on,
+        )
+
+    def save(self) -> None:
+        self.dao.write_csv(
+            dataframe=self.df_to_save, path=self.conf["save_file"], header="true"
+        )
+
     def unpersist_data_frames(self) -> None:
         """Unpersist the data frames in memory"""
         self.df_time_immediately_before_after_order.unpersist()
         self.df_processed_count_polling_orders.unpersist()
         self.polling_order_processor.df_polling_orders.unpersist()
+        self.df_status_before_order.unpersist()
