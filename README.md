@@ -52,6 +52,8 @@ The project with the processing of all events is inside the folder /AppEventProc
 
 ## Installation
 
+DEV enviroment.
+
 ### Pre-requisite: 
 * Spark
 
