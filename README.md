@@ -2,7 +2,7 @@
 
 App Event Processing is a project to analyze data from a App using:
 
-* Postgres: Postgres database for Airflow metadata and a model trips database.
+* Postgres: Postgres database.
 * Spark: Spark for processing data.
 
 ## Postgres
